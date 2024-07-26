@@ -1,5 +1,9 @@
-# telnetd.py WORKS
+# telnetd.py
 
+__version__ = '1.0.20240726'  # Major.Minor.Patch
+
+# Created by Chris Drake.
+# Full-featured telnet daemon for micropython  https://github.com/gitcnd/telnetd
 
 import uos
 import sys
@@ -8,7 +12,6 @@ import select
 import socket
 import gc
 #import machine
-import binascii
 #from io import IOBase 
 import uio
 
@@ -300,6 +303,7 @@ class telnetd(uio.IOBase):
             try:
                 self._TERM_HEIGHT, self._TERM_WIDTH = map(int, seq[:-1].split(';'))
             except Exception as e:
+                import binascii
                 print("term-size set command {} error: {}; seq={}",format(seq[:-1],e,  binascii.hexlify(seq)  ))
             return self._line, 'sz', self._cursor_pos
         elif seq.startswith('>') and seq.endswith('c'):  # Extended device Attributes
@@ -394,11 +398,12 @@ class telnetd(uio.IOBase):
                                 client_socket['a'] += data
                                 if ord(client_socket['a'][-1]) == 0x0d or len(client_socket['a'])>63: # caution; neither client_socket['a'][-1]=='\n' nor client_socket['a'].endswith('\n') work here!
                                     client_socket['a'] = client_socket['a'][:-1] # .rstrip('\n') does not work here
-                                    if client_socket['a'] == self.tspassword:
+                                    #if client_socket['a'] == self.tspassword:
+                                    if self._chkpass('chk',client_socket['a'],self.tspassword):
                                         import network
                                         del client_socket['a'] # this lets them in
                                         #client_socket['sock'].send()
-                                        client_socket['buf']="\r\nWelcome to {} - {} Micropython {} on {}\r\n".format(network.WLAN(network.STA_IF).config('hostname'),uos.uname().sysname,uos.uname().version,uos.uname().machine).encode('utf-8')
+                                        client_socket['buf']="\r\nWelcome to {} - {} Micropython {} on {} running {} v{}\r\n".format(network.WLAN(network.STA_IF).config('hostname'),uos.uname().sysname,uos.uname().version,uos.uname().machine,__file__,__version__).encode('utf-8')
                                         #print("",end='')
                                         self.send_chars_to_all("")
                                     else:
@@ -520,15 +525,51 @@ class telnetd(uio.IOBase):
         while self.send_chars_to_all(""):
             pass # time.sleep(0.1)  # Prevent a tight loop
 
-
         
+    # Test or create a shadow password
+    def _chkpass(self, op, pwd, cur=None): # Caution: this must live in sh1.py (called from sh.py)
+        import binascii
+        import uhashlib
+        if op == 'chk':
+            stored_data = cur.split('$')
+            if stored_data[1] != '5':
+                print("bad pwd hash algo") #  Unsupported hash algorithm in existing password.  Expected linux shadow format 5 (salted sha256)
+                return
+            hasher = uhashlib.sha256()
+            hasher.update(stored_data[2].encode() + pwd.encode()) # Hash the input password with the stored salt
+            return binascii.b2a_base64(hasher.digest()).decode().strip() == stored_data[3] # check it matched the current password
+        else: # hash and return new password
+            salt = binascii.b2a_base64(os.urandom(32)).decode().strip()
+            hasher = uhashlib.sha256()
+            hasher.update(salt.encode() + pwd.encode())
+            return '$5${}${}$'.format(salt, binascii.b2a_base64(hasher.digest()).decode().strip())
+
+
+    def stop():
+        uos.dupterm(None)
+        del sys.modules['telnetd']
+        for client_socket in self.sockets:
+            client_socket['sock'].close()
+        self.server_socket.close()
+        del sys.modules['telnetd']
+
 
 def start():
 
     t=telnetd()
-    t.telnetd('pass')
+    t.telnetd("$5$bl0zjwUtt8T2WLJBH5Vadl/Ix6X+cFdJr5td4a0B+n0=$1txXuyLLzAvAMM/jYSlpRScy3nSwvTQ05Mv7At5LiSs=$") # linux shadow format. default password is: pass
     uos.dupterm(t)
 
 
-
 start()
+
+
+# import gc
+# gc.collect()
+# gc.mem_free() 
+# import os
+# os.dupterm(None)
+# import sys
+# del sys.modules['telnetd']
+# gc.collect()
+# gc.mem_free() 
