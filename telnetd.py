@@ -409,7 +409,6 @@ class telnetd(uio.IOBase):
                                     else:
                                         try:
                                             client_socket['sock'].send(b'wrong.\r\n')
-                                            client_socket['sock'].send(client_socket['a']) # REMOVE
                                         except:
                                             pass
                                         sockdel.insert(0,i) # kick off the attempt
