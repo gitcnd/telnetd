@@ -558,6 +558,7 @@ def start():
 
     t=telnetd()
     t.telnetd("$5$bl0zjwUtt8T2WLJBH5Vadl/Ix6X+cFdJr5td4a0B+n0=$1txXuyLLzAvAMM/jYSlpRScy3nSwvTQ05Mv7At5LiSs=$") # linux shadow format. default password is: pass
+    # Create passwords with:  t._chkpass('','pass')
     uos.dupterm(t)
 
 

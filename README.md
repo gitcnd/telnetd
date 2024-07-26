@@ -15,7 +15,7 @@ You can have as many connections at once as you like - all of them connect to th
 
 Connection and Disconnection etc messages show in yellow on the top line of all terminals (to hopefully not interfere with whatever else you're doing at the time in other sessions)
 
-You can also do `t.telnetd('mypassword', ip='192.168.1.123', port='10023')` if you only want it on one IP, or need to change the port.
+You can also do `t.telnetd(t._chkpass('','mypassword'), ip='192.168.1.123', port='10023')` if you only want it on one IP, or need to change the port.
 
 If you're low on space, you can use the `telnetd124.mpy` file instead, as follows:
 
