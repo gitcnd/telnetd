@@ -403,7 +403,7 @@ class telnetd(uio.IOBase):
                                         import network
                                         del client_socket['a'] # this lets them in
                                         #client_socket['sock'].send()
-                                        client_socket['buf']="\r\nWelcome to {} - {} Micropython {} on {} running {} v{}\r\n".format(network.WLAN(network.STA_IF).config('hostname'),uos.uname().sysname,uos.uname().version,uos.uname().machine,__file__,__version__).encode('utf-8')
+                                        client_socket['buf']="\r\nWelcome to\x1b[32;1m {} \x1b[0m- {} Micropython {} on {} running\x1b[33;1m {} v{}\x1b[0m\r\n".format(network.WLAN(network.STA_IF).config('hostname'),uos.uname().sysname,uos.uname().version,uos.uname().machine,__file__,__version__).encode('utf-8')
                                         #print("",end='')
                                         self.send_chars_to_all("")
                                     else:
@@ -556,7 +556,15 @@ class telnetd(uio.IOBase):
 def start():
 
     t=telnetd()
-    t.telnetd("$5$bl0zjwUtt8T2WLJBH5Vadl/Ix6X+cFdJr5td4a0B+n0=$1txXuyLLzAvAMM/jYSlpRScy3nSwvTQ05Mv7At5LiSs=$") # linux shadow format. default password is: pass
+    p="$5$bl0zjwUtt8T2WLJBH5Vadl/Ix6X+cFdJr5td4a0B+n0=$1txXuyLLzAvAMM/jYSlpRScy3nSwvTQ05Mv7At5LiSs=$"  # linux shadow format. default password is: pass
+    try:
+        for line in open("/settings.toml"):
+            if line.startswith('PASSWORD ='):
+                p=line.split('"')[1]
+                break
+    except:
+        pass
+    t.telnetd(p)
     # Create passwords with:  t._chkpass('','pass')
     uos.dupterm(t)
 
