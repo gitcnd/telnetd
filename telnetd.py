@@ -1,6 +1,6 @@
 # telnetd.py
 
-__version__ = '1.0.20240726'  # Major.Minor.Patch
+__version__ = '1.0.20240801'  # Major.Minor.Patch
 
 # Created by Chris Drake.
 # Full-featured telnet daemon for micropython  https://github.com/gitcnd/telnetd
@@ -11,37 +11,10 @@ import time
 import select
 import socket
 import gc
-#import machine
-#from io import IOBase 
+import machine
 import uio
 
-class telnetd(uio.IOBase):
-
-    def __init__(self):
-        #print("telnetd init")
-        self.server_socket = None
-        self.sockets = []  # Dict of open TCP/IP client_socket connections for both input and output ['sock'] is the socket. ['addr'] is the client address. ['buf'] is the socket buffer. ['r'], ['w'], ['e'] is the state
-
-        self._nbuf = ""
-        self._line = ""
-        self._cursor_pos = 0
-        self._lastread = time.ticks_ms()
-        self._esc_seq = ""
-        self._reading_esc = False
-        self._insert_mode = True  # Default to insert mode
-        self._hist_loc = -1  # Start with the most recent command (has 1 added before use; 0 means last)
-
-        self._TERM_WIDTH = 80
-        self._TERM_HEIGHT = 24
-        self._TERM_TYPE = ""
-        self._TERM_TYPE_EX = ""
-        #self._SAVE = "\0337\033[s" # Save cursor position
-        #self._REST = "\033[u\0338" # Restore cursor position
-        #self._YEL = "\033[33;1m" # Bright yellow
-        #self._NORM = "\033[0m"   # Reset all attributes
-        #self.led = machine.Pin(8, machine.Pin.OUT)
-    
-        self.iac_cmds = [ # These need to be sent with specific timing to tell the client not to echo locally and exit line mode
+iac_cmds = [ # These need to be sent with specific timing to tell the client not to echo locally and exit line mode
             # First set of commands from the server
             b'\xff\xfd\x18'  # IAC DO TERMINAL TYPE
             b'\xff\xfd\x20'  # IAC DO TSPEED
@@ -60,13 +33,49 @@ class telnetd(uio.IOBase):
             b'\xff\xfb\x05'  # IAC WILL STATUS
             b'\xff\xfd\x06'  # IAC DO LFLOW
             b'\xff\xfb\x01'  # IAC WILL ECHO
-        ]
+]
     
+
+class telnetd(uio.IOBase):
+
+    def __init__(self):
+        import os
+        self.server_socket = None
+        self.sockets = []  # Dict of open TCP/IP client_socket connections for both input and output ['sock'] is the socket. ['addr'] is the client address. ['buf'] is the socket buffer. ['r'], ['w'], ['e'] is the state
+
+        self._nbuf = ""
+        self._line = ""
+        self._cursor_pos = 0
+        self._lastread = time.ticks_ms()
+        self._esc_seq = ""
+        self._reading_esc = False
+        self._insert_mode = True  # Default to insert mode
+        self._hist_loc = -1  # Start with the most recent command (has 1 added before use; 0 means last)
+
+        self._TERM_WIDTH = 80
+        self._TERM_HEIGHT = 24
+        self._TERM_TYPE = ""
+        self._TERM_TYPE_EX = ""
+        self._wdt = None
+        if 'wdt.up' in os.listdir('/'):
+            import _thread
+            print("Starting Watchdog Feeder")
+            self._wdt = machine.WDT(timeout=200000) # give it 3.33 minutes to run what we want before resetting and trying again (enough time to upload 2MB at 115200 baud)
+            _thread.start_new_thread(self.feed_wdt,())
+
+    def feed_wdt(t):
+        while True:
+            time.sleep(15)
+            # maybe check socket stuff here?
+            t._wdt.feed() # prevent reboot as long as we are running OK
+            #print(".",end='')
+
 
     def print_console_message(self,msg):
         print(f"\0337\033[s\033[H\033[33;1m{msg}\033[0m\033[u\0338",end="") # Save cursor pos, go to top-left, yellow, show message, white, restore cursor
 
     def accept_telnet_connect(self,unused):
+        global iac_cmds
         #print("accept_telnet_connect:",self,unused)
         client_sock, client_addr = self.server_socket.accept() # client_socket['sock'] is the socket, client_socket['addr'] is the address
 
@@ -84,7 +93,7 @@ class telnetd(uio.IOBase):
         client_sock.setblocking(False)
 
         # Tell the new connection to set up their terminal for us
-        for i, cmd in enumerate(self.iac_cmds + [b'Password: ']):
+        for i, cmd in enumerate(iac_cmds + [b'Password: ']):
             #print("sent: ", binascii.hexlify(cmd))
             client_sock.send(cmd)
             # Wait for the client to respond
@@ -526,7 +535,7 @@ class telnetd(uio.IOBase):
 
         
     # Test or create a shadow password
-    def _chkpass(self, op, pwd, cur=None): # Caution: this must live in sh1.py (called from sh.py)
+    def _chkpass(self, op, pwd, cur=None):
         import binascii
         import uhashlib
         if op == 'chk':
@@ -564,8 +573,8 @@ def start():
                 break
     except:
         pass
-    t.telnetd(p)
-    # Create passwords with:  t._chkpass('','pass')
+    t.telnetd(p) # to use plaintext instead of encrypted passwords, use:   t.telnetd( t._chkpass('create','some plaintext password') )
+    # Create passwords with:  t._chkpass('create','my_new_password'); or run "import sh" then "passwd"
     uos.dupterm(t)
 
 
