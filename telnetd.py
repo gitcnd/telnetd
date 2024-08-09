@@ -1,6 +1,6 @@
 # telnetd.py
 
-__version__ = '1.0.20240801'  # Major.Minor.Patch
+__version__ = '1.0.20240803'  # Major.Minor.Patch
 
 # Created by Chris Drake.
 # Full-featured telnet daemon for micropython  https://github.com/gitcnd/telnetd
@@ -72,7 +72,8 @@ class telnetd(uio.IOBase):
 
 
     def print_console_message(self,msg):
-        print(f"\0337\033[s\033[H\033[33;1m{msg}\033[0m\033[u\0338",end="") # Save cursor pos, go to top-left, yellow, show message, white, restore cursor
+        pass # cannot print messages, because dupterm calls itself recursively which breaks stuff...
+        # print(f"\0337\033[s\033[H\033[33;1m{msg}\033[0m\033[u\0338",end="") # Save cursor pos, go to top-left, yellow, show message, white, restore cursor
 
     def accept_telnet_connect(self,unused):
         global iac_cmds
@@ -101,6 +102,7 @@ class telnetd(uio.IOBase):
             if i>2:
                 ready_to_read, _, _ = select.select([client_sock], [], [], 5)
                 if ready_to_read:
+                    time.sleep(0.1) # give it enough time to finish sending its terminal size/etc info to us, before we discard that.
                     ignore = client_sock.recv(1024)
                     #if ignore:
                     #    print("got: ", binascii.hexlify(ignore)) #        b'fffa200033383430302c3338343030fff0fffa27000358415554484f52495459012f686f6d652f636e642f2e58617574686f72697479fff0fffa18004c494e5558fff0fffc01fffa1f01180073fff0fffb06fffd01'
@@ -391,9 +393,10 @@ class telnetd(uio.IOBase):
             for i, client_socket in enumerate(self.sockets):
                 client_socket['r'], _, client_socket['e'] = select.select([client_socket['sock']], [], [client_socket['sock']], 0)
                 for s in client_socket['r']:
-                    if 1:#try:
+                    try:
                         #data = client_socket['sock'].recv(1024).decode('utf-8').rstrip('\000')
-                        data = client_socket['sock'].recv(1024)
+                        data = client_socket['sock'].recv(1024) #   OSError: [Errno 113] ECONNABORTED
+
                         #if data:
                         #    print("data: ", binascii.hexlify(data)) # data:  b'0d00'
                         data = data.rstrip(b'\000') # enter-key has 00 added after it
@@ -412,7 +415,7 @@ class telnetd(uio.IOBase):
                                         import network
                                         del client_socket['a'] # this lets them in
                                         #client_socket['sock'].send()
-                                        client_socket['buf']="\r\nWelcome to\x1b[32;1m {} \x1b[0m- {} Micropython {} on {} running\x1b[33;1m {} v{}\x1b[0m\r\n".format(network.WLAN(network.STA_IF).config('hostname'),uos.uname().sysname,uos.uname().version,uos.uname().machine,__file__,__version__).encode('utf-8')
+                                        client_socket['buf']="\r\nWelcome to\x1b[32;1m {} \x1b[0m- {} Micropython {} on {} running\x1b[33;1m {} v{}\x1b[0m\r\n>>> ".format(network.WLAN(network.STA_IF).config('hostname'),uos.uname().sysname,uos.uname().version,uos.uname().machine,__file__,__version__).encode('utf-8')
                                         #print("",end='')
                                         self.send_chars_to_all("")
                                     else:
@@ -426,12 +429,14 @@ class telnetd(uio.IOBase):
                         else:
                             #print("EOF ", client_socket['addr'])
                             sockdel.insert(0,i) # remember to close it shortly (backwards from end, so index numbers don't change in the middle)
-                    #except Exception as e:
-                    #    print("read Exception ",e, "on ", client_socket['addr'])
-                    #    continue
+                    except Exception as e:
+                        #cannot print from inside a dupterm handler: print("read Exception ",e, "on ", client_socket['addr'])
+                        #self.print_console_message(f"read Exception {e} on {client_socket['addr']}")
+                        sockdel.insert(0,i) # remember to close it shortly (backwards from end, so index numbers don't change in the middle)
+                        continue
     
                 for s in client_socket['e']:
-                    self.print_console_message(f"Handling exceptional condition for {client_socket['addr']}")
+                    #self.print_console_message(f"Handling exceptional condition for {client_socket['addr']}")
                     if i not in sockdel:
                         sockdel.insert(0,i) # remember to close it shortly (backwards from end, so index numbers don't change in the middle)
     
@@ -441,7 +446,8 @@ class telnetd(uio.IOBase):
             if self.server_socket:# Accept new connections
                 readable, _, exceptional = select.select([self.server_socket], [], [self.server_socket], 0)
                 for s in exceptional:
-                    print("server_socket err?",s)
+                    #self.print_console_message("server_socket err?") # print("server_socket err?",s)
+                    pass
                 for s in readable:
                     # Handle new connection
                     self.accept_telnet_connect(None) # self.server_socket)
