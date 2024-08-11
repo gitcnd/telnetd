@@ -25,3 +25,7 @@ If you're low on space and using MicroPython v1.24.\*, you can use the `telnetd1
 ### Watchdog option
 
 Create the empty file /wdt.up to tell telnetd that it must do a wdt.feed() every 15 seconds, and it will reboot your MCU if anything causes this to stop responding after 3 1/3 minutes (which is enough time to upload new firmwares etc)
+
+### Bootlog option
+
+Create the empty file /telnet.log to tell telnetd that it must also send a copy of all console output into the file /telnet.log (stops writing after 4096 bytes)

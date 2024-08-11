@@ -1,6 +1,6 @@
 # telnetd.py
 
-__version__ = '1.0.20240803'  # Major.Minor.Patch
+__version__ = '1.0.20240811'  # Major.Minor.Patch
 
 # Created by Chris Drake.
 # Full-featured telnet daemon for micropython  https://github.com/gitcnd/telnetd
@@ -59,6 +59,10 @@ class telnetd(uio.IOBase):
         self._TERM_TYPE = ""
         self._TERM_TYPE_EX = ""
         self._wdt = None
+        self._logb=0
+        if 'telnet.log' in os.listdir('/'):
+            self._telnet_log = open('/telnet.log', 'ab')
+            self._logb=4096 # only log this much
         if 'wdt.up' in os.listdir('/'):
             import _thread
             print("Starting Watchdog Feeder")
@@ -479,6 +483,11 @@ class telnetd(uio.IOBase):
     def write(self, data):
         if len(data):
             if len(self.sockets)>0: self.send_chars_to_all(data.decode('utf-8'))
+            if self._logb>0:
+                self._telnet_log.write(data) # also log all output to a file ? can't write from dupterm?
+                self._logb -= len(data)
+                if not self._logb>0:
+                    self._telnet_log.close()
             lstart = 0
             lr = False
             while lstart < len(data):
@@ -499,6 +508,7 @@ class telnetd(uio.IOBase):
                 if lr:
                     self._lastline_ptr = 0
                     lr = False
+                    if self._logb>0: self._telnet_log.flush()
         return(len(data))
 
     # Send characters to all sockets and files. should be called often with '' for flushing slow sockets (until it says all-gone)
