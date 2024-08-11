@@ -47,6 +47,8 @@ class telnetd(uio.IOBase):
         self._line = ""
         self._cursor_pos = 0
         self._lastread = time.ticks_ms()
+        self._lastline = bytearray(32)
+        self._lastline_ptr=0 # so initial connections have context
         self._esc_seq = ""
         self._reading_esc = False
         self._insert_mode = True  # Default to insert mode
@@ -415,7 +417,7 @@ class telnetd(uio.IOBase):
                                         import network
                                         del client_socket['a'] # this lets them in
                                         #client_socket['sock'].send()
-                                        client_socket['buf']="\r\nWelcome to\x1b[32;1m {} \x1b[0m- {} Micropython {} on {} running\x1b[33;1m {} v{}\x1b[0m\r\n>>> ".format(network.WLAN(network.STA_IF).config('hostname'),uos.uname().sysname,uos.uname().version,uos.uname().machine,__file__,__version__).encode('utf-8')
+                                        client_socket['buf']="\r\nWelcome to\x1b[32;1m {} \x1b[0m- {} Micropython {} on {} running\x1b[33;1m {} v{}\x1b[0m\r\n".format(network.WLAN(network.STA_IF).config('hostname'),uos.uname().sysname,uos.uname().version,uos.uname().machine,__file__,__version__).encode('utf-8') + self._lastline[:self._lastline.find(b'\x00')]
                                         #print("",end='')
                                         self.send_chars_to_all("")
                                     else:
@@ -475,7 +477,28 @@ class telnetd(uio.IOBase):
         return None
 
     def write(self, data):
-        self.send_chars_to_all(data.decode('utf-8'))
+        if len(data):
+            if len(self.sockets)>0: self.send_chars_to_all(data.decode('utf-8'))
+            lstart = 0
+            lr = False
+            while lstart < len(data):
+                llend = data.find(b'\x0a', lstart)
+                if llend == -1:
+                    llend = len(data) # No more newlines found; add the rest of the data to _lastline
+                else: # Newline found; add data up to the newline and reset _lastline_ptr
+                    llend += 1  # exclude the '\x0a' in processing
+                    lr=True
+                to_copy = min(32 - self._lastline_ptr, llend - lstart) # Determine the amount of data to copy
+                if to_copy > 0:
+                    self._lastline[self._lastline_ptr:self._lastline_ptr + to_copy] = data[lstart:lstart + to_copy] # Copy the data to _lastline
+                    self._lastline_ptr += to_copy
+        
+                lstart = llend # Move the start pointer forward
+
+                if 0 < self._lastline_ptr < 32: self._lastline[self._lastline_ptr]=0 # truncate
+                if lr:
+                    self._lastline_ptr = 0
+                    lr = False
         return(len(data))
 
     # Send characters to all sockets and files. should be called often with '' for flushing slow sockets (until it says all-gone)
