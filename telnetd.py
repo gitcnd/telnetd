@@ -62,6 +62,7 @@ class telnetd(uio.IOBase):
         self._logb=0
         if 'telnet.log' in os.listdir('/'):
             self._telnet_log = open('/telnet.log', 'ab')
+            self._telnet_log.write(b'#boot\n')
             self._logb=4096 # only log this much
         if 'wdt.up' in os.listdir('/'):
             import _thread
